@@ -11,7 +11,7 @@
 # In the configuration: bind = "0.0.0.0:8080", database = "/data/kalamar.sqlite3", secret_file = "/data/secret.key",
 # and trusted_proxies = the address the proxy reaches the container from (e.g. "172.16.0.0/12").
 
-FROM rust:1.97-slim-bookworm AS build
+FROM rust:1.99-slim-bookworm AS build
 WORKDIR /src
 COPY . .
 RUN cargo build --release --locked -p kalamar-service -p kalamar-relay
