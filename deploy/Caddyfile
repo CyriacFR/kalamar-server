@@ -1,0 +1,31 @@
+# Caddy in front of kalamar-service: automatic HTTPS, WebSocket upgrades included.
+# The service listens on 127.0.0.1:8080 (server.bind) with server.api_url = "https://play.example.org/api"
+# and server.trusted_proxies = ["127.0.0.1/32", "::1/128"].
+# The relay is UDP: Caddy does not carry it; open UDP 47313 to kalamar-relay directly.
+
+play.example.org {
+	# The discovery document and the API (the service serves /.well-known/... and /api/...).
+	reverse_proxy /.well-known/kalamar-server.json 127.0.0.1:8080
+	reverse_proxy /api/* 127.0.0.1:8080 {
+		# Caddy sets X-Forwarded-For itself (replacing what the client sent).
+		header_up -X-Real-IP
+	}
+	# Your privacy notice and rules pages.
+	handle /privacy {
+		root * /srv/kalamar-site
+		rewrite * /privacy.html
+		file_server
+	}
+	handle /rules {
+		root * /srv/kalamar-site
+		rewrite * /rules.html
+		file_server
+	}
+	request_body {
+		max_size 128KB
+	}
+	log {
+		# Keep access logs short-lived or off: they contain IP addresses.
+		output discard
+	}
+}

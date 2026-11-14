@@ -1,0 +1,38 @@
+# Checks of the repository itself: English-only text, relative links, nothing derived from a game, and the
+# third-party inventory. No secret is used, so pull requests from forks run it as they are.
+name: Repository checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    name: Text, links, content and third-party inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: English only (exceptions in scripts/english-only.json)
+        run: python scripts/check-english.py
+      - name: Relative links of the Markdown files
+        run: python scripts/check-links.py
+      - name: Nothing derived from a game, no key or secret (scripts/content-rules.json)
+        run: python scripts/check-content.py
+      - name: Rust toolchain (cargo metadata only)
+        run: rustup toolchain install 1.97.1 --profile minimal && rustup default 1.97.1
+      - name: Licenses of every crate (docs/third-party-dependencies.md)
+        run: python scripts/third-party-inventory.py --check

@@ -1,0 +1,29 @@
+[package]
+name = "kalamar-relay"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "MIT"
+publish = false
+description = "UDP relay for matches of the supported game build (relay protocol v1)"
+
+# Kept self-contained (no workspace dependencies) so it still builds as a standalone binary when copied out.
+[dependencies]
+clap = { version = "4.6.7", features = ["derive", "env"] }
+hmac = "0.13.0"
+rand = "0.10.3"
+sha2 = "0.11.1"
+# Already tokio's: the workers' sockets (SO_REUSEPORT on Linux, one socket per worker).
+socket2 = { version = "0.6.5", features = ["all"] }
+subtle = "2.6.1"
+tokio = { version = "1.54.1", features = ["rt", "net", "macros", "time", "signal", "sync"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[dev-dependencies]
+# The load bench (examples/relay_bench.rs) runs its simulated members on several threads.
+tokio = { version = "1.54.1", features = ["rt-multi-thread"] }
+
+[[bin]]
+name = "kalamar-relay"
+path = "src/main.rs"

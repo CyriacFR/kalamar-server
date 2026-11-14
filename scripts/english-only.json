@@ -1,0 +1,50 @@
+{
+  "_comment": "Exceptions of scripts/check-english.py: the only places where text in another language than English is expected. Paths are relative to the repository's root; '**' crosses folders, '*' does not. Every entry says why. The values of locale keys ({ en = ..., fr = ... }, {\"fr\": ...}) are translations and are never checked.",
+  "skip": [
+    {
+      "paths": ["scripts/check-english.py", "scripts/english-only.json"],
+      "why": "This check's own word lists and exceptions."
+    }
+  ],
+  "strings": [
+    {
+      "paths": [
+        "crates/kalamar-service/src/auth/password.rs",
+        "crates/kalamar-service/src/auth/mail.rs",
+        "crates/kalamar-service/src/matches.rs",
+        "crates/kalamar-service/src/spectate.rs",
+        "crates/kalamar-service/src/draft.rs",
+        "crates/kalamar-service/src/api/rooms.rs"
+      ],
+      "why": "Texts the service sends to players (forms, refusals, e-mails, decisions) in English and French, the protocol's localized strings (their comments are still checked)."
+    },
+    {
+      "paths": ["crates/kalamar-service/tests/password.rs"],
+      "why": "Checks the French texts of the password forms."
+    }
+  ],
+  "comments": [
+    {
+      "paths": ["deploy/install.sh"],
+      "why": "The installer asks its questions in English or French (--lang): only its comments are checked, since its texts nest quotes in ways the string detection cannot follow."
+    }
+  ],
+  "words": [],
+  "lines": [
+    {
+      "path": "crates/kalamar-protocol/src/contract.rs",
+      "contains": ["\"Éloïse\""],
+      "why": "Test of a non-ASCII member name."
+    },
+    {
+      "path": "crates/kalamar-relay/src/wire.rs",
+      "contains": ["\"été\""],
+      "why": "Test of a display name in UTF-8."
+    },
+    {
+      "path": "crates/kalamar-service/tests/http.rs",
+      "contains": ["\"é\".repeat"],
+      "why": "Test of an oversized non-ASCII input."
+    }
+  ]
+}

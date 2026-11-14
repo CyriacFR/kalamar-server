@@ -1,0 +1,28 @@
+# Build outputs
+/target/
+/target-*/
+# What a local server writes (deploy/kalamar.local.toml keeps its database and secrets in data/), and the file
+# `kalamar-service init` writes by default (--config kalamar.toml)
+/data/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+/deploy/local.toml
+/kalamar.toml
+# A safety net: secrets (relay secrets, the server's secret file) never enter the repository
+*.key
+# The CI recipe's test configuration and logs, when run by hand (.github/workflows/ci.yml)
+/ci.toml
+/ci-limits.toml
+*.log
+# What crates/kalamar-relay/scripts/interop.ps1 writes
+/crates/kalamar-relay/interop-run/
+# Personal settings of coding assistants (the shared instructions, AGENTS.md and CLAUDE.md, are tracked)
+CLAUDE.local.md
+.claude/settings.local.json
+# Python caches, editor and OS files
+__pycache__/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

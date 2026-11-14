@@ -1,0 +1,47 @@
+name: Feature or protocol change
+description: An idea for the reference server, the relay, the test kit, or a change to the protocol.
+labels: ["enhancement", "needs: triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas are welcome. A protocol change follows CONTRIBUTING.md, "Changing the protocol". Out of scope whatever
+        their merit: game content, the publisher's online services, payments, and collecting more personal data than
+        a feature strictly needs.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - A feature of the reference server, the relay or the test kit
+        - A protocol change (additive, minor version)
+        - A protocol change (breaking, major version)
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you, your players or your launcher are trying to do, and what stops you today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+      description: For a protocol change, the endpoints, members or events, and what an older launcher or server does with them.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: It needs no game content, and stores no more personal data than it needs (or the proposal says what and why).
+          required: true
+        - label: I would like to work on it myself.

@@ -1,0 +1,68 @@
+# A local test server: plain HTTP on 127.0.0.1, dev and guest logins, the relay on 127.0.0.1:47313.
+# Run: kalamar-relay --open --bind 127.0.0.1   and   kalamar-service --config deploy/kalamar.local.toml serve
+# Never expose this configuration: the dev provider lets anyone log in as anyone.
+
+[server]
+name = "Local test server"
+api_url = "http://127.0.0.1:8080"
+bind = "127.0.0.1:8080"
+production = false
+database = "data/local.sqlite3"
+secret_file = "data/local-secret.key"
+privacy_url = "https://example.invalid/privacy"
+operator = { name = "Local tester", contact = "mailto:nobody@example.invalid" }
+
+[features]
+test_clock = false
+draft = true                  # 1.1.6: the stage draft (the room form's `draft` option, the duel queue)
+
+[auth.dev]
+enabled = true
+
+[auth.guest]
+enabled = true
+
+[rate_limits]                 # every account and room of a local test comes from 127.0.0.1
+accounts_per_ip_per_day = 0.0
+room_starts_per_hour = 0.0
+
+[[relays]]
+host = "127.0.0.1"
+port = 47313
+
+[rooms]
+modes = ["turf"]
+drafts = ["veto"]
+
+[[drafts]]
+id = "veto"
+label = { en = "Stage veto", fr = "Veto des stages" }
+summary = { en = "Each team bans one stage, then a stage is drawn among the rest.", fr = "Chaque équipe bannit un stage, puis un stage est tiré au sort parmi les autres." }
+turns = ["ban:first:1", "ban:second:1", "random"]
+turn_s = 20
+
+[[ladders]]
+id = "duel"
+name = { en = "Duel" }
+
+[[queues]]
+id = "duel"
+name = { en = "Ranked duel" }
+teams = [1, 1]
+rated = true
+ladder = "duel"
+selection = "game"
+pool = [{ mode = "turf" }]
+result_policy = "standard"
+draft = "veto"
+
+[[queues]]
+id = "squad"
+name = { en = "4 v 4" }
+teams = [4, 4]
+min_teams = [1, 1]
+shrink_after_s = 30
+party_max = 4
+selection = "game"
+pool = [{ mode = "turf" }]
+result_policy = "standard"

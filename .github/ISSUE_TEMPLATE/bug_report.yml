@@ -1,0 +1,66 @@
+name: Bug report
+description: The reference server, the relay, the test kit or the installer does not behave as documented.
+labels: ["bug", "needs: triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a problem. Before you start:
+        - **Security problems** go privately to the maintainers, never in an issue: see SECURITY.md.
+        - **A problem on a server you play on** (an account, a ban, a result) is for that server's operator.
+        - Remove personal data from logs and configuration: players' names, tokens, room codes, IP addresses, secrets.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before reporting
+      options:
+        - label: I searched the open issues and found nothing about this.
+          required: true
+        - label: This report contains no secret, token, room code or player's personal data.
+          required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - kalamar-service (the reference service)
+        - kalamar-relay (standalone or embedded)
+        - kalamar-testkit (simulator, conformance suite)
+        - deploy/install.sh or the deployment examples
+        - The specification (docs/protocol)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: "0.1.0 / commit abc1234"
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform and how it runs
+      description: OS, and Docker, systemd, or by hand; the preset you started from, if any.
+      placeholder: "Debian 13, systemd units of deploy/systemd, preset competitive"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The smallest configuration and the requests, or a kalamar-testkit command, that show it.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log lines
+      description: The service's and the relay's lines around the problem (they hold no tokens or codes by design; remove addresses and names).
+      render: text

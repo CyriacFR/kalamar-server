@@ -1,0 +1,71 @@
+# Kalamar community service: preset "friends" (a small private server).
+# Private rooms by code, a friends list with presence, a name as the only login. No queues, no ratings.
+# Every option is explained in deploy/kalamar.example.toml. Check with:  kalamar-service -c <this file> check-config
+# Change it while the service runs with:                                 kalamar-service -c <this file> admin reload
+
+[server]
+name = "{{NAME}}"
+description = { en = "Private rooms between friends.", fr = "Des salons privés entre amis." }
+api_url = "https://{{HOST}}/api"
+bind = "{{BIND}}"                  # plain HTTP, behind your HTTPS reverse proxy (deploy/Caddyfile)
+production = true
+database = "{{DATA}}/kalamar.sqlite3"
+secret_file = "{{DATA}}/secret.key"          # back it up with the database
+trusted_proxies = [{{PROXIES}}]   # only these peers' X-Forwarded-For is believed
+privacy_url = "https://{{HOST}}/privacy"  # publish PRIVACY-TEMPLATE.md there, adapted
+languages = ["fr", "en"]
+operator = { name = "{{OPERATOR}}", contact = "{{CONTACT}}" }
+
+[features]
+rooms = true
+queues = false
+parties = false
+friends = true
+presence = true
+ratings = false
+leaderboards = false
+stats = true
+moderation = true
+population = true
+
+[auth.guest]                             # a display name is enough: nothing to create, nothing to store
+enabled = true
+
+# The relay runs inside this program, on a thread of its own: one program to start, enough for a few friends.
+# Open UDP 47313 to this machine: players reach it directly, never through the HTTP proxy. For more than a few dozen
+# players at once, run kalamar-relay as a program of its own instead (the preset "competitive" shows how).
+[embedded_relay]
+enabled = true
+port = 47313
+secret_file = "{{DATA}}/relay.key"           # created at the first start: the relay opens only the rooms of this server
+max_rooms = 32                               # rooms at the same time (one per match)
+max_sessions = 128                           # players of all rooms together
+# max_members_per_source = 8                 # players of one room from one address (a whole 4 v 4 behind one box);
+                                             # a larger LAN party: 12, a room's size (a restart applies it)
+
+[[relays]]                               # the relay as players reach it
+host = "{{RELAY}}"
+port = 47313
+secret_file = "{{DATA}}/relay.key"           # the embedded relay's (taken from [embedded_relay] if left out)
+# Another region, or more players: on another machine run
+#   kalamar-relay --new-room-secret relay-2.key      then      kalamar-relay --room-secret-file relay-2.key
+# copy relay-2.key here, add a [[relays]] with its host, an id and secret_file = "<that copy>", then `admin reload`.
+# One secret per relay: whoever holds a relay's secret can open rooms on that relay.
+
+[limits]
+max_rooms = 50
+max_users = 500
+
+[rooms]
+teams_choices = [[1, 1], [2, 2], [3, 3], [4, 4]]
+default_teams = [4, 4]
+modes = ["turf"]
+password = true
+min_players = 2
+result_policy = "casual"                 # the first result received counts unless another contradicts it
+invites = true
+invites_friends_only = true
+host = "owner"
+
+[rules]
+summary = { en = "Be kind. This is a server between friends.", fr = "Soyez bienveillants. C'est un serveur entre amis." }

@@ -1,0 +1,138 @@
+# Format, lints, tests on Linux and Windows, the conformance suite against a running reference server, and release
+# builds of the three programs. No secret is used, so pull requests from forks run it as they are.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: "1.97.1"
+
+jobs:
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust toolchain
+        run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component rustfmt && rustup default "$RUST_TOOLCHAIN"
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust toolchain
+        run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --component clippy && rustup default "$RUST_TOOLCHAIN"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+  test:
+    name: tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust toolchain
+        shell: bash
+        run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal && rustup default "$RUST_TOOLCHAIN"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo test --locked --workspace
+      - name: Installer, dry runs only
+        if: runner.os == 'Linux'
+        run: bash deploy/test-install.sh
+
+  conformance:
+    name: release build (${{ matrix.os }}), and the conformance suite against it on Linux
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust toolchain
+        run: rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal && rustup default "$RUST_TOOLCHAIN"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Release build of the three programs
+        run: cargo build --release --locked --workspace
+      - name: A test configuration (deploy/kalamar.local.toml with the test clock and the integration tests' rate limits)
+        if: runner.os == 'Linux'
+        run: |
+          # The local file already has a [rate_limits] table (accounts and room starts unlimited): these lines go into
+          # it, a second table of that name would not parse.
+          cat > ci-limits.toml <<'EOF'
+          per_ip_rps = 1000.0
+          per_ip_burst = 5000.0
+          per_user_rps = 500.0
+          per_user_burst = 2000.0
+          auth_per_ip_per_min = 10000.0
+          room_join_per_min = 1000.0
+          friend_requests_per_hour = 1000.0
+          reports_per_day = 1000.0
+          EOF
+          sed -e 's/^test_clock = false/test_clock = true/' -e '/^\[rate_limits\]/r ci-limits.toml' deploy/kalamar.local.toml > ci.toml
+          grep -q '^test_clock = true' ci.toml
+          grep -q '^per_ip_rps = 1000.0' ci.toml
+          ./target/release/kalamar-service --config ci.toml check-config
+      - name: Start the relay and the service (loopback only)
+        if: runner.os == 'Linux'
+        run: |
+          # An open relay on loopback (a relay without its secret refuses to start unless --open says so).
+          ./target/release/kalamar-relay --open --bind 127.0.0.1 > relay.log 2>&1 &
+          ./target/release/kalamar-service --config ci.toml serve > service.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:8080/.well-known/kalamar-server.json > /dev/null && exit 0
+            sleep 1
+          done
+          echo "the service did not answer"; cat service.log; exit 1
+      - name: A simulated match (four players, one lying about the result)
+        if: runner.os == 'Linux'
+        run: ./target/release/kalamar-testkit simulate --api http://127.0.0.1:8080 --players 4 --cheat 1
+      - name: Conformance suite
+        if: runner.os == 'Linux'
+        run: ./target/release/kalamar-testkit conformance --api http://127.0.0.1:8080 --max-wait 5
+      - name: Logs of the service and the relay
+        if: always() && runner.os == 'Linux'
+        run: tail -n 100 service.log relay.log || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: kalamar-server-${{ runner.os }}
+          path: |
+            target/release/kalamar-service
+            target/release/kalamar-relay
+            target/release/kalamar-testkit
+            target/release/kalamar-service.exe
+            target/release/kalamar-relay.exe
+            target/release/kalamar-testkit.exe
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,4 @@
+# Line endings: text files are stored with LF and checked out with LF on every system (the shell scripts and the
+# configuration files run on Linux servers); Windows scripts are checked out with CRLF.
+* text=auto eol=lf
+*.ps1 text eol=crlf

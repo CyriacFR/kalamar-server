@@ -1,0 +1,744 @@
+# Kalamar community service: example configuration (the full reference offering).
+# Copy it, adapt every value marked CHANGE, and check it with:  kalamar-service --config kalamar.toml check-config
+# Shorter starting points:  kalamar-service --config kalamar.toml init --preset friends|competitive|tournament
+# Changed while the service runs with:  kalamar-service --config kalamar.toml admin reload   (or SIGHUP on Unix)
+#   Sessions, rooms and matches go on; an invalid file changes nothing. Only a restart changes: server.api_url, bind,
+#   production, database, secret_file, trusted_proxies, features.test_clock, [auth.*], [rate_limits], [[webhooks]],
+#   [embedded_relay] (and [[relays]] while a change of [embedded_relay] waits). Prefer `admin reload` to SIGHUP or
+#   `systemctl reload`: it prints what was applied, or why nothing was (a signal only writes it to the log).
+# Times are seconds unless said otherwise; texts are localized maps {en = "...", fr = "..."}.
+
+[server]
+name = "My community"                                    # CHANGE: 1 to 64 characters, shown in launchers
+description = { en = "A friendly community server.", fr = "Un serveur communautaire convivial." }
+api_url = "https://play.example.org/api"                 # CHANGE: the public HTTPS base of the API (its path is served)
+bind = "127.0.0.1:8080"                                  # plain HTTP, behind the reverse proxy (deploy/Caddyfile, deploy/nginx.conf)
+production = true                                        # refuses the dev provider and the test clock
+database = "data/kalamar.sqlite3"
+secret_file = "data/secret.key"                          # created at first start (keys the login identity hashes); back it up
+trusted_proxies = ["127.0.0.1/32", "::1/128"]            # only these peers' X-Forwarded-For is believed
+privacy_url = "https://play.example.org/privacy"         # CHANGE: your privacy notice (PRIVACY-TEMPLATE.md)
+rules_url = "https://play.example.org/rules"             # CHANGE or remove
+region = "eu-west"
+languages = ["fr", "en"]
+operator = { name = "Camille", contact = "mailto:admin@example.org" }   # CHANGE
+relay_selection = "latency"   # with several [[relays]]: latency | least_busy | first (see [[relays]] below)
+relay_probe_s = 30            # with several [[relays]]: seconds between reachability checks of each; 0: never
+
+[features]                    # the optional areas declared to launchers (core is always on)
+rooms = true
+queues = true
+parties = true                # needs queues
+friends = true
+presence = true               # needs friends
+ratings = true
+leaderboards = true           # needs ratings
+stats = true
+moderation = true
+test_clock = false            # POST /v1/_test/clock, test servers only (refused when production = true)
+activities = true             # protocol 1.1: generic activities ([[activities]] below)
+series = true                 # protocol 1.1: series of matches (best of N)
+badges = true                 # protocol 1.1: badges and titles ([[badges]], [[titles]] below)
+profiles = true               # protocol 1.1: server-designed profile pages
+population = true             # protocol 1.1.4: GET /v1/population, public counts (online, in a match, searching)
+draft = true                  # protocol 1.1.6: stage (and mode) draft between "match found" and the launch ([[drafts]])
+spectators = true             # protocol 1.1.7: places in the stands for spectators ([spectators], rooms, queues, activities)
+
+[auth.guest]                  # an account with only a display name (lives in the launcher's tokens)
+enabled = true
+# ranked = false              # guest accounts stay out of rated queues and tournaments (default true: they may play
+                              # them). A guest account costs one request: a banned or cooled-down player is back at
+                              # once, and anyone can bring a second account. check-config warns while it is true and
+                              # rated queues or tournaments exist. Ranked play needs a login players cannot throw away.
+
+[auth.dev]                    # username-only accounts: local testing only (refused when production = true)
+enabled = false
+
+[auth.discord]                # OAuth2 + PKCE with a loopback redirect to the launcher (README: "Login methods");
+enabled = false               # the same as an [[auth.oauth]] entry with preset = "discord"
+client_id = "000000000000000000"                         # CHANGE
+client_secret_file = "/etc/kalamar/discord-secret"       # or the environment variable KALAMAR_DISCORD_CLIENT_SECRET
+redirect_uris = ["http://127.0.0.1:53682/callback", "http://127.0.0.1:53683/callback"]   # registered in the Discord app
+scopes = ["identify"]
+upstream_pkce = true
+use_provider_name = true      # a new account starts with the Discord display name (players can change it)
+label = { en = "Log in with Discord", fr = "Se connecter avec Discord" }
+
+# Any OAuth 2 / OpenID Connect provider, as many as you like ([[auth.oauth]]; docs/operator-first-steps.md, "Choosing
+# login methods"). Register an application with the provider, add the loopback redirect URIs to it, and keep the
+# client secret in a file only the service reads (or in an environment variable): never in this file. Never change an
+# `id` once players use it: accounts are found by provider id. Each entry below is an example, off until uncommented.
+#
+# [[auth.oauth]]                # Google: endpoints, `sub` as the user id, scope openid only (no name, no address)
+# id = "google"
+# preset = "google"
+# client_id = "000000000000-change.apps.googleusercontent.com"     # CHANGE (client type "Desktop app")
+# client_secret_file = "/etc/kalamar/google-secret"                # or client_secret_env = "KALAMAR_GOOGLE_SECRET"
+# redirect_uris = ["http://127.0.0.1:53682/callback", "http://127.0.0.1:53683/callback"]
+# # scopes = ["openid", "profile"] and name = ["given_name"] start a new account from the Google first name
+#
+# [[auth.oauth]]                # GitHub: public profile only, the GitHub login as the initial name
+# id = "github"
+# preset = "github"
+# client_id = "CHANGE"                                             # an OAuth App, callback http://127.0.0.1:53682/callback
+# client_secret_file = "/etc/kalamar/github-secret"
+#
+# [[auth.oauth]]                # Twitch: the Helix users endpoint with the Client-Id header
+# id = "twitch"
+# preset = "twitch"
+# client_id = "CHANGE"
+# client_secret_file = "/etc/kalamar/twitch-secret"
+#
+# [[auth.oauth]]                # Any OpenID Connect provider (Keycloak, Authentik, your site's SSO): endpoints from
+# id = "club"                   # <issuer>/.well-known/openid-configuration, fetched at the first login
+# preset = "oidc"
+# issuer = "https://sso.example.org/realms/community"              # CHANGE
+# label = { en = "Log in with the club account", fr = "Se connecter avec le compte du club" }
+# client_id = "kalamar"
+# client_secret_file = "/etc/kalamar/club-secret"
+# # subject = "sub"                 # the stable user id in the userinfo answer (the oidc default)
+# # name = ["preferred_username"]   # the initial display name (the oidc default; [] for "Player")
+#
+# [[auth.oauth]]                # Without preset: every endpoint, the user-id path and the client authentication
+# id = "forum"
+# label = { en = "Log in with the forum", fr = "Se connecter avec le forum" }
+# client_id = "kalamar"
+# client_secret_env = "KALAMAR_FORUM_SECRET"
+# authorize_url = "https://forum.example.org/oauth/authorize"     # https only
+# token_url = "https://forum.example.org/oauth/token"
+# userinfo_url = "https://forum.example.org/api/me"
+# subject = "user.id"           # a dot path in the userinfo JSON: id, sub, user.id, data.0.id
+# name = ["user.username"]      # paths tried in order for the initial name
+# scopes = ["read"]
+# token_auth = "post"           # basic (HTTP Basic, the default) or post (client_id and client_secret in the form)
+# upstream_pkce = true          # send the PKCE pair to the provider too (the service checks it in every case)
+# # userinfo_client_id_header = "Client-Id"
+# # authorize_params = { prompt = "consent" }
+
+# E-mail and password accounts (docs/operator-first-steps.md, "Choosing login methods"), off unless enabled. The
+# protocol forbids requiring an e-mail address to play: keep [auth.guest] or an OAuth provider on too. Addresses are
+# stored only as a keyed hash, passwords as Argon2id hashes; read LEGAL-NOTES.md, section 3, before turning it on.
+#
+# [auth.password]
+# enabled = true
+# min_length = 10               # 8 to 64 (NIST suggests 15 when the password is the only factor)
+# max_length = 128
+# signup = true                 # the "Create an account" form (false: no new password accounts)
+# change_form = true            # the "Change password" form of the login screen
+# operator_code_ttl_s = 3600    # without e-mail, `kalamar-service admin password-reset <user>` makes a reset code
+# email_code_ttl_s = 900
+# codes_per_hour = 3            # e-mailed codes per address
+# max_concurrent_hashes = 2     # each Argon2 computation holds memory_kib of memory
+# argon2 = { memory_kib = 19456, iterations = 2, parallelism = 1 }   # OWASP: 19 MiB, 2 iterations, 1 lane (minimum)
+# lockout = { account_failures = 10, account_refill_s = 120, ip_failures = 30, ip_refill_s = 60, known_address_days = 30 }
+#
+# Optional outgoing e-mail: reset codes by e-mail, address confirmation at sign-up, a notice when a password changes.
+# Without it, resets need a code from you and addresses are not confirmed (the forms say so).
+# [auth.password.smtp]
+# host = "smtp.example.org"     # CHANGE
+# port = 587
+# tls = "starttls"              # starttls (587) or implicit (465): never in clear
+# username = "kalamar@example.org"
+# password_file = "/etc/kalamar/smtp-password"   # or password_env = "KALAMAR_SMTP_PASSWORD"; never in this file
+# from = "My community <noreply@play.example.org>"
+# verify_signup = true          # a code e-mailed at sign-up confirms the address before the account exists
+
+[limits]
+display_name_min = 1
+display_name_max = 10         # the game shows nicknames of at most 10 characters
+name_change_cooldown_s = 3600
+friends_max = 200
+party_size = 4
+body_bytes = 16384            # protocol minimums: 16384 / 65536 / 4096
+result_bytes = 65536
+status_bytes = 4096
+friend_request_ttl_s = 2592000
+party_invite_ttl_s = 300
+room_invite_ttl_s = 600
+access_ttl_s = 3600
+refresh_ttl_s = 2592000
+max_rooms = 1000
+max_users = 100000
+header_timeout_s = 10         # a client sends its request's headers within this (a body has 30 s): slow clients
+max_connections = 4096        # are cut off even with no proxy in front; more open HTTP connections are refused
+
+[rate_limits]                 # in memory only; 429 with Retry-After
+per_ip_rps = 30.0
+per_ip_burst = 120.0
+per_user_rps = 15.0
+per_user_burst = 60.0
+auth_per_ip_per_min = 30.0
+room_join_per_min = 10.0      # stops room code guessing
+friend_requests_per_hour = 30.0
+reports_per_day = 10.0
+population_per_ip_per_min = 120.0   # GET /v1/population (answers are cached 10 s anyway)
+spectate_per_min = 20.0       # 1.1.7: places taken or left in the stands, lists of watchable matches, per player
+accounts_per_ip_per_day = 20.0  # new accounts per client network (a guest login is one); 0: unlimited
+room_starts_per_hour = 30.0   # room matches started per player (each mints a room code of the relay); 0: unlimited
+ipv4_prefix = 32              # a client "address" for every per-address limit: its IPv4 /32 (24: a whole /24)...
+ipv6_prefix = 64              # ... and its IPv6 /64 (one home, one server: counting single IPv6 addresses gave one
+                              # client 2^64 of them)
+
+# The relay inside this program (the same code as kalamar-relay, on threads of its own): one program to start
+# instead of two, for a small server (a few dozen players at once). Beyond that, run kalamar-relay as a program of
+# its own: the work of the API then never shares its machine time slices with the relay's. It listens on UDP and is
+# named in [[relays]] below under the host players reach it by. Changing this section needs a restart; while it
+# waits for one, a reload keeps the running [[relays]] too.
+# [embedded_relay]
+# enabled = true
+# bind = "0.0.0.0"
+# port = 47313
+# secret_file = "data/relay.key"   # created at the first start: the relay opens only the rooms of this server
+# workers = 0                      # threads handling datagrams; 0: half the processors (the rest stays for the API)
+# max_rooms = 256                  # rooms at the same time (one per match); 0: no cap
+# max_sessions = 1024              # players of all rooms together; 0: no cap
+# max_members_per_source = 8       # players of one room from one address (an IPv4 address, an IPv6 /64; 0: no limit):
+#                                  # a whole 4 v 4 behind one box; a larger LAN party: 12 (a room's size)
+# max_sessions_per_source = 24     # players of all rooms together from one address (0: no limit)
+# stats_interval_s = 30            # one line of counters in the log this often (0: none)
+#
+# The [[relays]] entry that names this machine (its port, and localhost, the bind address or the host of api_url;
+# or the only entry) gets secret_file from [embedded_relay] when it names none. check-config refuses an entry that
+# names this machine with another secret, or an embedded relay bound by a secret no entry announces: every JOIN would
+# be refused (JOIN_NAK 3) and every match would fail.
+
+[[relays]]                    # where matches run; UDP must reach it directly (never through the HTTP proxy)
+host = "relay.example.org"    # CHANGE
+port = 47313
+# A relay bound to this server: its secret (hexadecimal, at least 32 digits: `kalamar-relay --new-room-secret
+# relay.key`, readable by its owner only). The service seals every room code of this relay with it, and the relay,
+# started with `--room-secret-file relay.key`, opens no other room. A sealed code cannot be made without the secret,
+# but whoever holds a code (every player of its match) can open or join that room for 24 to 48 hours (relay.md 4.2).
+# Without a secret a relay is open to whoever knows its address.
+# secret_file = "data/relay.key"   # or secret_env = "KALAMAR_RELAY_SECRET"
+# One secret per relay: whoever holds a relay's secret (the person running another relay that shares it) can open
+# rooms on it. check-config warns when two entries hold the same secret.
+# Several relays (protocol 1.1.9): repeat [[relays]], each with an id. Launchers measure their round trip to each and
+# a match gets the relay whose slowest player is the fastest (relay_selection = "latency"; within 25 ms, or when
+# nobody measured, the relay with fewer matches under way, then this order). Only the players count (not the
+# spectators), only a launcher that measured every relay counts, and values are taken between 1 ms and 2 s. These are
+# the launchers' own figures: a player can keep a match off a relay by declaring it slow, but cannot put it on a
+# relay another player could not reach while one every player reached exists. A relay that misses three
+# reachability checks in a row gets no new match while another answers. A match keeps its relay, a series too.
+# id = "eu"                   # 1 to 64 of A-Z a-z 0-9 _ -; default "host:port". Do not rename it lightly: launchers
+#                             # report their latency under it
+# region = "eu-west"          # free text shown to players
+# label = { en = "Europe", fr = "Europe" }
+#
+# [[relays]]
+# host = "relay-us.example.org"
+# id = "us"
+# region = "us-east"
+# label = { en = "North America", fr = "Amérique du Nord" }
+
+# The load of the relays bound to this server (protocol 1.1.13, relay.md 4.3): the service asks each relay that has a
+# secret for its sessions, rooms and load; a new match goes, among the relays within latency_tolerance_ms of the best
+# one for its slowest player, to the one with the most room left, never to a full or silent one while another has
+# room. When every relay is full a room start is refused (relay_capacity) and queues wait. Open relays, and relays
+# that do not know the query, announce nothing and are chosen without their load. `kalamar-service admin relays` shows what it sees.
+# [relay_load]
+# status_s = 5                     # seconds between two questions to each bound relay; 0: never (chosen without their load)
+# latency_tolerance_ms = 30        # relays this close to the best one (for the slowest player) are as good
+# full_at_percent = 90             # load (sessions or rooms against their caps, or the workers' time spent working)
+#                                  # at which a relay takes no new match ...
+# resume_at_percent = 75           # ... until it is back under this one
+
+# Result policies (api.md, "Result policies"). Values: quorum any|majority|all|<n>; silence consent_after_play|ignore;
+# disagreement majority|void; abort void; disconnect game_result|forfeit; no_show void; leave void|forfeit|
+# forfeit_unrated (1.1.11, below). (This server refuses the `rematch` values.)
+[[result_policies]]
+id = "standard"
+name = { en = "Standard", fr = "Standard" }
+summary = { en = "A result counts when more than half of the players back it (agreeing results, players shown disconnected whose game failed, players who played and sent nothing). Different results: the strict majority wins, else void. Ratings change only if both teams back it.", fr = "Un résultat compte quand plus de la moitié des joueurs le soutiennent. Résultats différents : la majorité stricte l'emporte, sinon le match est annulé. La cote ne change que si les deux équipes le soutiennent." }
+quorum = "majority"
+silence = "consent_after_play"
+disagreement = "majority"
+rated_requires_both_teams = true
+abort = "void"
+disconnect = "game_result"
+no_show = "void"
+accept_s = 20
+launch_s = 90
+result_s = 2400               # the game's own step limits add up to about 40 minutes in the worst case
+grace_s = 120
+# What the reports' counters (the teams' scores and each player's statistics) weigh; reports always have to agree on
+# what decides the match (winner, stage, teams, disconnections). flag (the default, also on every policy that does
+# not say): compared with a wide tolerance, a larger gap flagged in the outcome (stats_check) and the log, never
+# voiding | ignore | strict (every counter equal: real matches between two machines are then void, each game
+# computing its own).
+# stats = "flag"
+# 1.1.11: what a player's voluntary departure from a match in play does when the match has no result (in a 1v1 the
+# other game always stops with the session: no record). void (the default) | forfeit (the leaver's
+# team loses, rated as any result) | forfeit_unrated (it loses, no rating changes). Only a departure the leaver's own
+# launcher reports in play counts (the game's "Leave match", or its window closed during the match); a crash or a lost
+# connection stays void: nobody can tell whose side failed. The offense `left` ([penalties]) comes on top.
+# leave = "void"
+
+# The ranked queues' policy: Standard, and leaving a match in play loses it (docs/protocol/leaving.md).
+[[result_policies]]
+id = "ranked"
+name = { en = "Ranked", fr = "Classé" }
+summary = { en = "Like Standard; a player who leaves a match in play (the game's Leave match, or its window closed) loses it, and the loss counts for the ladder. A crash or a lost connection voids the match.", fr = "Comme Standard ; un joueur qui quitte un match en cours (Quitter le match, ou sa fenêtre fermée) le perd, et cette défaite compte au classement. Un plantage ou une coupure annule le match." }
+quorum = "majority"
+silence = "consent_after_play"
+disagreement = "majority"
+rated_requires_both_teams = true
+accept_s = 20
+launch_s = 90
+result_s = 2400
+grace_s = 120                 # also: a 1v1 left in play is decided this long after the departure if the other is silent
+leave = "forfeit"
+
+[[result_policies]]
+id = "casual"
+name = { en = "Casual", fr = "Détente" }
+summary = { en = "The first result received counts unless another player's result contradicts it.", fr = "Le premier résultat reçu compte, sauf si celui d'un autre joueur le contredit." }
+quorum = "any"
+silence = "ignore"
+disagreement = "void"
+rated_requires_both_teams = false
+accept_s = 20
+launch_s = 120
+result_s = 2400
+grace_s = 60
+
+# 1.1.7: what the spectators' reports ("witnesses") are used for (docs/protocol/spectators.md). witness = ignore (the
+# default: kept, shown, never used) | tiebreak (they break a disagreement between the players' reports) | required
+# (tiebreak, and a rated result changes ratings only when a counted witness confirms it; a counted witness who
+# contradicts the players voids the match). witness_from = any | referees (only the [spectators] referees, or the
+# accounts the operator API seats). A spectator's report never counts as a player's, its errors never void a match.
+# With witness_from = any, any spectator may be a player's second account: on ranked queues and tournaments use
+# referees (check-config warns otherwise). 1.1.12: only a referee's report makes a broken tie rated.
+[[result_policies]]
+id = "witnessed"
+name = { en = "A spectator breaks ties", fr = "Un spectateur tranche" }
+summary = { en = "Like Standard; when the players' results differ, the result a spectator's game recorded decides between them.", fr = "Comme Standard ; quand les résultats des joueurs divergent, celui qu'a enregistré le jeu d'un spectateur tranche." }
+quorum = "majority"
+silence = "consent_after_play"
+disagreement = "majority"
+rated_requires_both_teams = true
+accept_s = 20
+launch_s = 90
+result_s = 2400
+grace_s = 120
+witness = "tiebreak"
+witness_from = "any"            # any spectator: for unrated play only (a player's second account may sit in the stands)
+
+[[result_policies]]
+id = "imposed"
+name = { en = "Imposed loadout", fr = "Tenue imposée" }
+summary = { en = "Like Standard, and a match where a player did not play the imposed weapon or gear is void.", fr = "Comme Standard ; un match où un joueur n'a pas joué l'arme ou l'équipement imposés est annulé." }
+quorum = "majority"
+silence = "consent_after_play"
+disagreement = "majority"
+rated_requires_both_teams = false
+loadout_check = "void"
+accept_s = 20
+launch_s = 90
+result_s = 2400
+grace_s = 120
+
+[[result_policies]]                # for a ranked queue watched by referees: queue result_policy = "refereed"
+id = "refereed"
+name = { en = "Refereed", fr = "Arbitré" }
+summary = { en = "Like Standard; ratings change only when a referee watched the match and saw the same result; a referee who saw another one voids it.", fr = "Comme Standard ; la cote ne change que si un arbitre a regardé le match et vu le même résultat ; un arbitre qui en a vu un autre l'annule." }
+quorum = "majority"
+silence = "consent_after_play"
+disagreement = "majority"
+rated_requires_both_teams = true
+accept_s = 20
+launch_s = 90
+result_s = 2400
+grace_s = 120
+witness = "required"
+witness_from = "referees"
+
+# 1.1.7: what holds for every place in the stands (docs/protocol/spectators.md). A spectator is a member of the game
+# session seated in the stands: it is never a player, never counted in a team's minimum, never imposed a loadout. Places
+# close when the match's game block is final (the game cannot let anyone in after the start); every player's and
+# spectator's launcher must declare the spectator seat (engine.spectator_seats, launcher.spectate), else a place is
+# refused with what is missing. The spectators of a match are shown to its players: nobody watches unseen.
+[spectators]
+referees = []                 # account ids of your referees: any place is theirs, a player's refusal does not apply
+opt_out = true                # players may refuse to be watched (account setting allow_spectators)
+verified_modes_only = false   # true: only the modes the engines ran with spectators (verified_modes), not all they list
+wait_s = 60                   # how long the host waits for a missing spectator once every player is in (0-600)
+summary = { en = "Spectators watch from the stands: the players see who watches. Nobody can join once a match is launched.", fr = "Les spectateurs regardent depuis la tribune : les joueurs voient qui regarde. Personne n'entre une fois le match lancé." }
+
+[rooms]
+teams_choices = [[1, 1], [2, 2], [3, 3], [4, 4]]
+default_teams = [4, 4]
+modes = ["turf"]              # mode ids of the game build (one mode: no mode field in the form)
+stages = []                   # stage ids; only if your players' game can select a stage (else leave empty)
+password = true
+min_players = 2
+result_policy = "casual"
+idle_close_s = 7200
+invites = true
+invites_friends_only = true   # also for party invitations
+host = "owner"                # owner | random: who hosts the game session
+# Loadouts a room owner may impose (form field `loadout`); weapon and gear ids are the engine's, from players' games.
+# Only players whose engine declares match_loadout can start such a room.
+loadouts = [
+  { id = "one-weapon", label = { en = "Everyone plays one weapon", fr = "Tout le monde avec une arme" }, loadout = { all = { weapon = { fixed = "weapon-a" } }, summary = { en = "Everyone plays weapon A." } } },
+]
+drafts = ["veto"]             # drafts a room owner may choose in the form (field `draft`, default: none); [[drafts]] ids
+
+# 1.1.7: places in a room's stands (form fields `spectators` and `spectators_who`). A member moves into the stands
+# and back like a team change; spectators are not players (min_players and both teams count players only).
+[rooms.spectators]
+max = 2                       # most places a room may open (0 to 2; 0 hides the option)
+default = 0                   # places of a new room
+who = ["anyone", "invited", "friends", "referees"]   # who may sit, as offered to the owner (the first is the default)
+host = false                  # true: an owner in the stands may host the game session (the engine verified it)
+# wait_s = 60                 # default: [spectators] wait_s
+
+# Queues: everything a launcher shows comes from here. teams = [alpha, bravo] (at most 8 players);
+# min_teams lets the queue start smaller after shrink_after_s per step; selection = random | rotation | fixed | game.
+[[queues]]
+id = "duel-ranked"
+name = { en = "Ranked duel", fr = "Duel classé" }
+description = { en = "One against one. Counts for the Duel ladder.", fr = "Un contre un. Compte pour le classement Duel." }
+order = 10
+teams = [1, 1]
+rated = true
+ladder = "duel"
+party_min = 1
+party_max = 1
+selection = "game"
+pool = [{ mode = "turf" }]
+result_policy = "ranked"       # 1.1.11: leaving a match in play loses it; "refereed" makes a referee's report required
+draft = "veto"                  # 1.1.6: one ban per team, then a random stage ([[drafts]] below)
+search = { base = 150.0, widen_per_s = 10.0, max = 1500.0 }
+# 1.1.7: a ranked match's places are the referees' (anti-spying: no friend of a player watches a ranked match). The
+# operator API seats a referee in a given match (POST /v1/operator/matches/{id}/spectators). Taken before the launch:
+# the accept phase or the draft.
+spectators = { seats = 1, who = "referees" }
+
+[[queues]]
+id = "duel"
+name = { en = "Duel", fr = "Duel" }
+description = { en = "One against one, unrated.", fr = "Un contre un, sans classement." }
+order = 20
+teams = [1, 1]
+rated = false
+balance_ladder = "duel"
+selection = "game"
+pool = [{ mode = "turf" }]
+result_policy = "standard"
+draft = "veto"                  # 1.1.6: one ban per team, then a random stage ([[drafts]] below)
+spectators = { seats = 2, who = "friends" }    # 1.1.7: friends of a player may watch (GET /v1/spectate lists the match)
+
+[[queues]]
+id = "squad-ranked"
+name = { en = "Ranked 4 v 4", fr = "4 contre 4 classé" }
+description = { en = "Four against four (three or two against as many when few players search).", fr = "Quatre contre quatre (trois ou deux de chaque côté quand peu de joueurs cherchent)." }
+order = 30
+teams = [4, 4]
+min_teams = [2, 2]            # a small community still gets matches
+shrink_after_s = 90
+rated = true
+ladder = "squad"
+party_min = 1
+party_max = 4
+selection = "game"
+pool = [{ mode = "turf" }]
+result_policy = "ranked"       # 1.1.11: a team whose player leaves a match in play loses it, when it has no result
+draft = "veto"                  # 1.1.6: one ban per team, then a random stage ([[drafts]] below)
+requirements = []             # e.g. ["placement_done:duel"] or ["min_games:duel:10"]
+# schedule = [{ days = ["fri", "sat"], from = "18:00", to = "24:00" }]   # UTC opening windows
+
+[[queues]]
+id = "squad"
+name = { en = "4 v 4", fr = "4 contre 4" }
+description = { en = "Four against four, unrated.", fr = "Quatre contre quatre, sans classement." }
+order = 40
+teams = [4, 4]
+min_teams = [2, 2]
+rated = false
+balance_ladder = "squad"
+party_min = 1
+party_max = 4
+selection = "game"
+pool = [{ mode = "turf" }]
+result_policy = "standard"
+draft = "veto"                  # 1.1.6: one ban per team, then a random stage ([[drafts]] below)
+
+[penalties]
+counted = ["decline", "accept_timeout", "no_show", "left"]
+window_s = 86400
+cooldowns_s = [0, 60, 300, 900, 3600]   # after the 1st, 2nd, ... offence within the window (the last repeats)
+summary = { en = "Declining or missing a found match, not launching in time or leaving a queue match blocks the queues: a warning first, then 1, 5, 15 and 60 minutes within a day.", fr = "Refuser ou manquer un match trouvé, ne pas lancer à temps ou quitter un match de file bloque les files : un avertissement, puis 1, 5, 15 et 60 minutes sur une journée." }
+
+[[ladders]]
+id = "duel"
+name = { en = "Duel", fr = "Duel" }
+description = { en = "Ranked 1 v 1.", fr = "1 contre 1 classé." }
+
+[[ladders]]
+id = "squad"
+name = { en = "Squad", fr = "Escouade" }
+description = { en = "Ranked 4 v 4.", fr = "4 contre 4 classé." }
+
+[rating]                      # the reference rating system (docs/reference-server.md, "Ratings"): Glicko-2, placement, tiers
+initial_rating = 1500.0
+initial_deviation = 350.0
+initial_volatility = 0.06
+tau = 0.5
+min_deviation = 45.0
+placement_games = 5
+display_deviations = 2.0      # shown value = rating - 2 x deviation
+season_keep = 0.5             # at a season roll-over
+season_deviation_floor = 250.0
+tiers = [
+  { id = "rookie", name = { en = "Rookie", fr = "Débutant" }, color = "#8C8C8C", min = -1000000.0 },
+  { id = "bronze", name = { en = "Bronze" }, color = "#B0703C", min = 900.0 },
+  { id = "silver", name = { en = "Silver", fr = "Argent" }, color = "#A8B0B8", min = 1150.0 },
+  { id = "gold", name = { en = "Gold", fr = "Or" }, color = "#D4AF37", min = 1350.0 },
+  { id = "platinum", name = { en = "Platinum", fr = "Platine" }, color = "#4FB3BF", min = 1550.0 },
+  { id = "diamond", name = { en = "Diamond", fr = "Diamant" }, color = "#5B8DEF", min = 1750.0 },
+  { id = "master", name = { en = "Master", fr = "Maître" }, color = "#9B59B6", min = 1950.0 },
+]
+
+# Display names the operator gives to game identifiers (launchers prefer names from the player's own game data).
+[catalog]
+modes = []                    # e.g. [{ id = "<mode id>", label = { en = "..." } }]
+stages = []
+
+[moderation]
+report_categories = [
+  { id = "cheating", label = { en = "Cheating", fr = "Triche" } },
+  { id = "harassment", label = { en = "Harassment", fr = "Harcèlement" } },
+  { id = "name", label = { en = "Offensive name", fr = "Nom offensant" } },
+  { id = "griefing", label = { en = "Leaving or sabotaging matches", fr = "Abandon ou sabotage" } },
+  { id = "other", label = { en = "Something else", fr = "Autre chose" } },
+]
+
+# Protocol 1.1 activities shown to launchers as views (docs/reference-server.md, "Activities and series"). Kinds of
+# this server: tournament (single elimination, every bracket match a best-of-N series; reopens after
+# reopen_after_s) and duel_series (the first two waiting players play a best-of-N series).
+[[activities]]
+id = "cup"
+kind = "tournament"
+title = { en = "Weekly cup", fr = "Coupe de la semaine" }
+subtitle = { en = "4 players, single elimination, best of 3", fr = "4 joueurs, élimination directe, au meilleur des 3" }
+description = { en = "Register; the cup starts when four players are in. Each round is a best of 3. A void series is drawn by lot.", fr = "Inscrivez-vous ; la coupe démarre à quatre. Chaque tour se joue au meilleur des 3." }
+icon = "trophy"
+color = "#D4AF37"
+order = 10
+size = 4
+best_of = 3
+mode = "turf"
+result_policy = "standard"
+reopen_after_s = 600
+draft = "veto"                # 1.1.6: a draft before every game of each series ([[drafts]])
+spectators = { seats = 2, who = "anyone" }   # 1.1.7: a place in a series' stands holds for its next games
+
+[[activities]]
+id = "imposed-night"
+kind = "duel_series"
+title = { en = "Imposed weapon night", fr = "Soirée arme imposée" }
+subtitle = { en = "Best of 3, everyone plays the evening's weapon", fr = "Au meilleur des 3, tout le monde joue l'arme de la soirée" }
+description = { en = "Both players play weapon A (an id of the engine); a match where someone did not is void.", fr = "Les deux joueurs jouent l'arme A ; un match où quelqu'un ne l'a pas jouée est annulé." }
+icon = "target"
+order = 30
+best_of = 3
+mode = "turf"
+result_policy = "imposed"
+loadout = { all = { weapon = { fixed = "weapon-a" } }, summary = { en = "Weapon A for everyone." } }
+
+[[activities]]
+id = "bo3"
+kind = "duel_series"
+title = { en = "Best of 3 challenge", fr = "Défi au meilleur des 3" }
+subtitle = { en = "Find an opponent, play three games at most", fr = "Trouvez un adversaire, trois manches au plus" }
+description = { en = "The first two players waiting play a best of 3.", fr = "Les deux premiers joueurs en attente jouent au meilleur des 3." }
+icon = "swords"
+order = 20
+best_of = 3
+mode = "turf"
+result_policy = "standard"
+
+# Protocol 1.1.6 stage drafts, "pick and ban" (docs/protocol/draft.md). Between "every player accepted" (or a room
+# start) and the launch, teams ban and pick stages (and modes) turn by turn; the launcher shows it, the server
+# decides everything. Queues (`draft`), rooms (`rooms.drafts`) and activities (`draft`) name a preset by its id.
+#
+#   turns       in order: ban:<team>:<n>  pick:<team>:<n>  random[:<n>]  last  strike, optionally followed by @mode
+#               (the default kind is @stage). <team>: first, second, alpha, bravo, both (both teams at once, each
+#               hidden from the other until both chose), winner, loser (of the previous game of a series).
+#               random draws among what remains, last plays the only one left, strike alternates single bans from
+#               `first` until one stage is left. A kind with no pick, draw or last gets a random draw at the end.
+#               A ban never takes the last option left.
+#   first_game_turns  the turns of a series' first game (default: turns)
+#   first       random | higher_rated | lower_rated (the queue's ladder) | loser | winner (previous game) | alpha | bravo
+#   decider     captain (the party leader, else the first player of the team; the next connected one when the
+#               captain is offline) | vote (every player votes; a strict majority, else the tally at the end) | any
+#   tiebreak    captain | random (ties of a vote)
+#   turn_s      time a team has for one turn (5 to 600); then the server acts, as for a team whose launchers cannot:
+#   timeout     random (it draws among what remains) | skip (a ban is lost; a missing pick is drawn at the end)
+#   stages      the pool (stage ids of your players' games); empty: the queue's pool, else rooms.stages, else every
+#               stage all the players' games can load. A stage a player's game cannot load is never offered.
+#   modes       the pool of @mode turns; empty: the queue's pool modes, or rooms.modes
+#   series      per_game (a draft before every game) | once (one draft before game 1; its picks, in order, are the
+#               stages of the games)
+#   exclude_played  in a series, stages already played are out of the next drafts (default true)
+#   required    only launchers that show the draft may play (a queue requirement, a room start check); without it,
+#               the server plays the turns of teams whose launchers cannot draft
+# A player who lets a turn run out can be penalized: add "draft_timeout" to [penalties] counted (queue matches).
+[[drafts]]
+id = "veto"
+label = { en = "Stage veto", fr = "Veto des stages" }
+summary = { en = "Each team bans one stage, then a stage is drawn among the rest.", fr = "Chaque équipe bannit un stage, puis un stage est tiré au sort parmi les autres." }
+turns = ["ban:first:1", "ban:second:1", "random"]
+first = "random"
+decider = "captain"
+turn_s = 20
+
+# More formats, off until uncommented and named by a queue, a room (rooms.drafts) or an activity:
+#
+# Stage strike: alternate bans until one stage is left. Give it a short pool (5 to 7 stage ids of your players'
+# games): every stage left over costs a turn.
+# [[drafts]]
+# id = "strike"
+# label = { en = "Stage strike", fr = "Élimination de stages" }
+# summary = { en = "Teams strike stages in turn; the last one is played.", fr = "Les équipes éliminent des stages à tour de rôle ; le dernier est joué." }
+# turns = ["strike"]
+# first = "lower_rated"
+# stages = ["<stage id>", "<stage id>", "<stage id>", "<stage id>", "<stage id>"]
+#
+# Blind bans by vote (teams of several players): both teams vote two bans at once, unseen by the other team.
+# [[drafts]]
+# id = "blind"
+# label = { en = "Blind bans", fr = "Bans à l'aveugle" }
+# summary = { en = "Both teams vote two bans at once, unseen; then a random stage among the rest.", fr = "Les deux équipes votent deux bans en même temps, sans se voir ; puis un stage au hasard parmi le reste." }
+# turns = ["ban:both:2", "random"]
+# decider = "vote"
+# tiebreak = "captain"
+# turn_s = 30
+#
+# Mode first, then stage: one mode ban each and a draw, then the second team bans a stage and the first picks.
+# [[drafts]]
+# id = "mode-then-stage"
+# label = { en = "Mode, then stage", fr = "Le mode, puis le stage" }
+# turns = ["ban:first:1@mode", "ban:second:1@mode", "random@mode", "ban:second:1", "pick:first:1"]
+# modes = ["turf", "<mode id>", "<mode id>"]
+#
+# A series where the loser picks: game 1 is a veto; then the previous game's winner bans one stage and its loser
+# picks; a stage already played is out. Name it from an activity (draft = "loser-picks").
+# [[drafts]]
+# id = "loser-picks"
+# label = { en = "The loser picks", fr = "Le perdant choisit" }
+# first_game_turns = ["ban:first:1", "ban:second:1", "random"]
+# turns = ["ban:winner:1", "pick:loser:1"]
+# series = "per_game"
+# exclude_played = true
+#
+# A series' stage order drafted once: one ban each, each team picks a game's stage, the one left decides game 3.
+# [[drafts]]
+# id = "series-order"
+# label = { en = "Stage order", fr = "Ordre des stages" }
+# turns = ["ban:first:1", "ban:second:1", "pick:first:1", "pick:second:1", "last"]
+# series = "once"
+
+# Protocol 1.1 badges and titles (docs/protocol/presentation.md): your community's own (never the game's names or art). A badge is
+# earned once, by its rule: matches:<n> (completed matches), wins:<n> (won matches), series_wins:<n> (won series),
+# tournament:<activity id> (won that tournament), tier:<ladder>:<tier id> (reached that tier or a higher one on that
+# ladder this season, after placement). icon: one of trophy swords shield star crown flag clock calendar users user
+# target fire bolt medal ribbon map dice lock check info warning chat chart heart; color: #RRGGBB (optional).
+[[badges]]
+id = "first-match"
+name = { en = "First match", fr = "Premier match" }
+description = { en = "Played a match on this server.", fr = "A joué un match sur ce serveur." }
+icon = "flag"
+rule = "matches:1"
+
+[[badges]]
+id = "regular"
+name = { en = "Regular", fr = "Habitué" }
+description = { en = "Played 100 matches.", fr = "A joué 100 matchs." }
+icon = "medal"
+color = "#4FB3BF"
+rule = "matches:100"
+
+[[badges]]
+id = "ten-wins"
+name = { en = "Ten wins", fr = "Dix victoires" }
+description = { en = "Won 10 matches.", fr = "A gagné 10 matchs." }
+icon = "star"
+color = "#D4AF37"
+rule = "wins:10"
+
+[[badges]]
+id = "series-winner"
+name = { en = "Series winner", fr = "Vainqueur de série" }
+description = { en = "Won a best-of series.", fr = "A remporté une série." }
+icon = "swords"
+rule = "series_wins:1"
+
+[[badges]]
+id = "cup-champion"
+name = { en = "Weekly cup champion", fr = "Champion de la coupe" }
+description = { en = "Won the weekly cup.", fr = "A remporté la coupe de la semaine." }
+icon = "crown"
+color = "#D4AF37"
+rule = "tournament:cup"
+
+[[badges]]
+id = "duel-gold"
+name = { en = "Duel gold", fr = "Duel or" }
+description = { en = "Reached Gold on the Duel ladder this season.", fr = "A atteint Or en Duel cette saison." }
+icon = "trophy"
+color = "#D4AF37"
+rule = "tier:duel:gold"
+
+# Titles a player may show next to their name (badge: the badge that unlocks it; none: everyone).
+[[titles]]
+id = "newcomer"
+text = { en = "Newcomer", fr = "Nouveau venu" }
+
+[[titles]]
+id = "veteran"
+text = { en = "Veteran", fr = "Vétéran" }
+badge = "regular"
+
+[[titles]]
+id = "champion"
+text = { en = "Champion", fr = "Champion" }
+badge = "cup-champion"
+
+# Operator integrations (docs/protocol/operators.md). Webhooks: signed POSTs to your tools (Kalamar-Signature header).
+# [[webhooks]]
+# url = "https://bot.example.org/kalamar"
+# secret_file = "/etc/kalamar/webhook-secret"
+# events = ["match.completed", "series.completed", "report.created"]   # empty: every event
+#
+# Operator API tokens (a bot, a statistics site, a referee): make one with
+#   kalamar-service -c kalamar.toml admin operator-token --name bot --scopes read,results
+# and paste the lines it prints here.
+# [[operator_tokens]]
+# name = "bot"
+# sha256 = "<64 hex digits>"
+# scopes = ["read", "results"]
+#
+# A refereed policy: add `decider = "referee"` (or "auto_then_referee") and `review_deadline_s = 3600` to a
+# [[result_policies]] entry; matches then wait in state under_review for POST /v1/operator/matches/{id}/decision.
+
+[rules]
+summary = { en = "Be kind. One account per person. Results are reported by your launcher and compared with the other players' reports.", fr = "Soyez bienveillants. Un compte par personne. Les résultats sont envoyés par votre lanceur et comparés à ceux des autres joueurs." }
+sections = [
+  { id = "fair-play", title = { en = "Fair play", fr = "Fair-play" }, body = { en = "Every player's launcher uploads the game's record of the match and the server compares them. One player alone cannot change a result; players who agree on a false result can, and a modified game can lie to everyone. Report cheating: moderators review reports.", fr = "Le lanceur de chaque joueur envoie le relevé du match et le serveur les compare. Un joueur seul ne peut pas changer un résultat ; des joueurs qui s'entendent le peuvent, et un jeu modifié peut tromper tout le monde. Signalez la triche : les modérateurs examinent les signalements." } },
+]
+
+[events]
+heartbeat_s = 20
+resume_window_s = 120
+buffer = 256
+max_connections_per_user = 4
+
+[retention]
+raw_reports_days = 30         # raw result and status files are deleted after this (the decision is kept)
+closed_reports_days = 365
+erased_hold_days = 30         # an erased account's login identity (a keyed hash) keeps the open reports about it at
+                              # most this long (a running cooldown and recent offenses: as long as they run); a new
+                              # account with the same login takes them over. Say it in your privacy notice (section 5)
+audit_days = 365              # the log of administrative actions (bans, erasures, resets by the operator)

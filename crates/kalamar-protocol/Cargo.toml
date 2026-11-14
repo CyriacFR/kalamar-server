@@ -1,0 +1,15 @@
+[package]
+name = "kalamar-protocol"
+description = "Normative pieces of the Kalamar community protocol 1.1: match contract helpers, result validation and the result decision procedure"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

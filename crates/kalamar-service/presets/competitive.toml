@@ -1,0 +1,220 @@
+# Kalamar community service: preset "competitive" (ranked play).
+# Ranked and unranked queues (1 v 1 and 4 v 4), two ladders with tiers, a stage veto before each match, parties,
+# friends, statistics, badges, places for referees. Rooms stay available for scrims.
+# Every option is explained in deploy/kalamar.example.toml. Check with:  kalamar-service -c <this file> check-config
+# Change it while the service runs with:                                 kalamar-service -c <this file> admin reload
+
+[server]
+name = "{{NAME}}"
+description = { en = "Ranked matches, ladders and seasons.", fr = "Matchs classés, classements et saisons." }
+api_url = "https://{{HOST}}/api"
+bind = "{{BIND}}"                  # plain HTTP, behind your HTTPS reverse proxy (deploy/Caddyfile)
+production = true
+database = "{{DATA}}/kalamar.sqlite3"
+secret_file = "{{DATA}}/secret.key"          # back it up with the database
+trusted_proxies = [{{PROXIES}}]   # only these peers' X-Forwarded-For is believed
+privacy_url = "https://{{HOST}}/privacy"  # publish PRIVACY-TEMPLATE.md there, adapted
+languages = ["fr", "en"]
+operator = { name = "{{OPERATOR}}", contact = "{{CONTACT}}" }
+
+[features]
+rooms = true
+queues = true
+parties = true
+friends = true
+presence = true
+ratings = true
+leaderboards = true
+stats = true
+moderation = true
+badges = true
+profiles = true
+population = true
+draft = true
+spectators = true
+
+# Guest accounts (a display name, nothing to remember) play rooms and unrated queues. They stay out of the ranked
+# queues (ranked = false): a guest account costs one request, so a banned or cooled-down player would be back at once,
+# and anyone could bring a second account. Ranked play needs a login players cannot throw away: add an
+# [[auth.oauth]] provider (Discord, ...) from deploy/kalamar.example.toml. (Logins and `ranked` change with a restart, not
+# with a reload.)
+[auth.guest]
+enabled = true
+ranked = false
+
+# The relay: kalamar-relay, a program of its own (recommended for more than a few friends: its latency does not move
+# while the API works, and it can sit on another machine). Players reach UDP 47313 directly, never through the HTTP
+# proxy. It is bound to this server by a secret, {{DATA}}/relay.key: `init` created it (readable by its owner only; without it, or with
+# --no-relay-secret: kalamar-relay --new-room-secret {{DATA}}/relay.key). Start the relay with it:
+#   kalamar-relay --room-secret-file {{DATA}}/relay.key
+[[relays]]
+host = "{{RELAY}}"
+port = 47313
+secret_file = "{{DATA}}/relay.key"           # the relay's secret: the service seals every room code with it
+# Another region, or more players: on another machine run
+#   kalamar-relay --new-room-secret relay-2.key      then      kalamar-relay --room-secret-file relay-2.key
+# copy relay-2.key here, add a [[relays]] with its host, an id and secret_file = "<that copy>", then `admin reload`.
+# One secret per relay: whoever holds a relay's secret can open rooms on that relay.
+#
+# A small server can run the relay inside this program instead (one program to start, see the preset "friends"):
+# [embedded_relay]
+# enabled = true
+# port = 47313
+# secret_file = "{{DATA}}/relay.key"         # created at the first start; the [[relays]] entry above keeps it
+
+[rooms]
+teams_choices = [[1, 1], [2, 2], [3, 3], [4, 4]]
+default_teams = [4, 4]
+modes = ["turf"]
+result_policy = "standard"
+drafts = ["veto"]
+
+[rooms.spectators]
+max = 2
+who = ["invited", "friends", "anyone"]
+
+[spectators]
+referees = []                            # account ids of your referees (kalamar-service admin users)
+opt_out = true
+
+[[result_policies]]
+id = "standard"
+name = { en = "Standard", fr = "Standard" }
+summary = { en = "A result counts when more than half of the players back it. Different results: the strict majority wins, else void. Ratings change only if both teams back it.", fr = "Un résultat compte quand plus de la moitié des joueurs le soutiennent. Résultats différents : la majorité stricte l'emporte, sinon le match est annulé. La cote ne change que si les deux équipes le soutiennent." }
+quorum = "majority"
+silence = "consent_after_play"
+disagreement = "majority"
+rated_requires_both_teams = true
+accept_s = 20
+launch_s = 90
+result_s = 2400
+grace_s = 120
+
+[[result_policies]]                      # the ranked queues: leaving a match in play loses it (protocol 1.1.11)
+id = "ranked"
+name = { en = "Ranked", fr = "Classé" }
+summary = { en = "Like Standard; a player who leaves a match in play (the game's Leave match, or its window closed) loses it, and the loss counts for the ladder. A crash or a lost connection voids the match.", fr = "Comme Standard ; un joueur qui quitte un match en cours (Quitter le match, ou sa fenêtre fermée) le perd, et cette défaite compte au classement. Un plantage ou une coupure annule le match." }
+quorum = "majority"
+silence = "consent_after_play"
+disagreement = "majority"
+rated_requires_both_teams = true
+accept_s = 20
+launch_s = 90
+result_s = 2400
+grace_s = 120
+leave = "forfeit"                        # void | forfeit | forfeit_unrated; the offence `left` comes on top
+
+[[ladders]]
+id = "duel"
+name = { en = "Duel", fr = "Duel" }
+description = { en = "Ranked 1 v 1.", fr = "1 contre 1 classé." }
+
+[[ladders]]
+id = "squad"
+name = { en = "Squad", fr = "Escouade" }
+description = { en = "Ranked 4 v 4.", fr = "4 contre 4 classé." }
+
+[[queues]]
+id = "duel-ranked"
+name = { en = "Ranked duel", fr = "Duel classé" }
+description = { en = "One against one. Counts for the Duel ladder.", fr = "Un contre un. Compte pour le classement Duel." }
+order = 10
+teams = [1, 1]
+rated = true
+ladder = "duel"
+party_min = 1
+party_max = 1
+selection = "game"
+pool = [{ mode = "turf" }]
+result_policy = "ranked"
+draft = "veto"
+search = { base = 150.0, widen_per_s = 10.0, max = 1500.0 }
+spectators = { seats = 1, who = "referees" }
+
+[[queues]]
+id = "squad-ranked"
+name = { en = "Ranked 4 v 4", fr = "4 contre 4 classé" }
+description = { en = "Four against four (three or two against as many when few players search).", fr = "Quatre contre quatre (trois ou deux de chaque côté quand peu de joueurs cherchent)." }
+order = 20
+teams = [4, 4]
+min_teams = [2, 2]                       # a small community still gets matches
+shrink_after_s = 90
+rated = true
+ladder = "squad"
+party_min = 1
+party_max = 4
+selection = "game"
+pool = [{ mode = "turf" }]
+result_policy = "ranked"
+draft = "veto"
+spectators = { seats = 1, who = "referees" }
+# schedule = [{ days = ["fri", "sat"], from = "18:00", to = "24:00" }]   # UTC opening windows
+
+[[queues]]
+id = "squad"
+name = { en = "4 v 4", fr = "4 contre 4" }
+description = { en = "Four against four, unrated.", fr = "Quatre contre quatre, sans classement." }
+order = 30
+teams = [4, 4]
+min_teams = [2, 2]
+rated = false
+balance_ladder = "squad"
+party_min = 1
+party_max = 4
+selection = "game"
+pool = [{ mode = "turf" }]
+result_policy = "standard"
+spectators = { seats = 2, who = "friends" }
+
+[penalties]
+counted = ["decline", "accept_timeout", "no_show", "left", "draft_timeout"]
+window_s = 86400
+cooldowns_s = [0, 60, 300, 900, 3600]
+summary = { en = "Declining or missing a found match, not launching in time or leaving a queue match blocks the queues: a warning first, then 1, 5, 15 and 60 minutes within a day.", fr = "Refuser ou manquer un match trouvé, ne pas lancer à temps ou quitter un match de file bloque les files : un avertissement, puis 1, 5, 15 et 60 minutes sur une journée." }
+
+[rating]
+placement_games = 5
+
+[[drafts]]
+id = "veto"
+label = { en = "Stage veto", fr = "Veto des stages" }
+summary = { en = "Each team bans one stage, then a stage is drawn among the rest.", fr = "Chaque équipe bannit un stage, puis un stage est tiré au sort parmi les autres." }
+turns = ["ban:first:1", "ban:second:1", "random"]
+first = "random"
+decider = "captain"
+turn_s = 20
+
+[[badges]]
+id = "first-match"
+name = { en = "First match", fr = "Premier match" }
+description = { en = "Played a match on this server.", fr = "A joué un match sur ce serveur." }
+icon = "flag"
+rule = "matches:1"
+
+[[badges]]
+id = "regular"
+name = { en = "Regular", fr = "Habitué" }
+description = { en = "Played 100 matches.", fr = "A joué 100 matchs." }
+icon = "medal"
+color = "#4FB3BF"
+rule = "matches:100"
+
+[[badges]]
+id = "duel-gold"
+name = { en = "Duel gold", fr = "Duel or" }
+description = { en = "Reached Gold on the Duel ladder this season.", fr = "A atteint Or en Duel cette saison." }
+icon = "trophy"
+color = "#D4AF37"
+rule = "tier:duel:gold"
+
+[[titles]]
+id = "newcomer"
+text = { en = "Newcomer", fr = "Nouveau venu" }
+
+[[titles]]
+id = "veteran"
+text = { en = "Veteran", fr = "Vétéran" }
+badge = "regular"
+
+[rules]
+summary = { en = "Be kind. One account per person. Results are reported by your launcher and compared with the other players' reports.", fr = "Soyez bienveillants. Un compte par personne. Les résultats sont envoyés par votre lanceur et comparés à ceux des autres joueurs." }

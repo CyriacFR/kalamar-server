@@ -1,0 +1,30 @@
+# Dependency update pull requests. Minor and patch updates of the crates come grouped in one pull request a week; major
+# updates come one by one. Dependabot's own commit messages ("Bump x from 1.0 to 1.1") already follow the project's
+# convention. Every update must still pass CI, and a new or changed license shows in docs/third-party-dependencies.md
+# (regenerate it with python scripts/third-party-inventory.py).
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      rust-minor-and-patch:
+        update-types: [minor, patch]
+    labels: [dependencies]
+
+  - package-ecosystem: docker
+    directory: /deploy
+    schedule:
+      interval: monthly
+    labels: [dependencies, "area: deploy"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+    labels: [dependencies, "area: ci"]

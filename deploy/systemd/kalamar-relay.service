@@ -1,0 +1,40 @@
+[Unit]
+Description=Kalamar relay (UDP, relay protocol v1)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# UDP 47313 must be reachable directly from the players (no HTTP proxy can carry it): open it in the firewall.
+# The relay is bound to its service by a secret (kalamar-relay --new-room-secret /etc/kalamar/relay.key, as root;
+# the same secret is the secret_file of the service's [[relays]] entry): it refuses to start without one. systemd
+# (247 or newer) reads the root-only file and hands it to the relay's dynamic account. A relay meant to be open to
+# anyone (a LAN party) says so with --open instead (and without LoadCredential).
+LoadCredential=relay.key:/etc/kalamar/relay.key
+ExecStart=/usr/local/bin/kalamar-relay --bind 0.0.0.0 --port 47313 --room-secret-file ${CREDENTIALS_DIRECTORY}/relay.key
+DynamicUser=yes
+Environment=KALAMAR_RELAY_LOG_LEVEL=info
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,22 @@
+{
+  "_comment": "Configuration of scripts/third-party-inventory.py. 'allowed' lists the licenses a dependency may use without a review; extend it only with a reason in 'allowed_why'.",
+  "title": "Third-party dependencies of the server",
+  "output": "docs/third-party-dependencies.md",
+  "intro": [
+    "Every crate the workspace pins in `Cargo.lock`, for the platforms the server is built for (Linux and Windows, x86-64). Nothing else is bundled: the SQLite library comes inside the `libsqlite3-sys` crate (SQLite itself is in the public domain). Why each direct dependency is there: the README, \"Dependencies\"."
+  ],
+  "cargo": [
+    {
+      "label": "Rust crates",
+      "manifest": "Cargo.toml",
+      "platforms": ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"],
+      "note": "\"runtime\": linked into one of the programs; \"build\": used only while compiling; \"dev\": tests only."
+    }
+  ],
+  "npm": [],
+  "allowed": [
+    "MIT", "MIT-0", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", "BSD-3-Clause", "0BSD", "ISC",
+    "Zlib", "Unicode-3.0", "Unicode-DFS-2016", "BSL-1.0", "CC0-1.0", "Unlicense", "MPL-2.0"
+  ],
+  "allowed_why": "Permissive licenses compatible with the project's MIT License. MPL-2.0 is a file-level license: a crate under it is used unmodified from crates.io, and a change to one of its files would have to be published under MPL-2.0."
+}

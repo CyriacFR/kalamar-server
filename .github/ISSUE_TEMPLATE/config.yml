@@ -1,0 +1,9 @@
+# Issues must use one of the forms.
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/CyriacFR/kalamar-server/security/advisories/new
+    about: Privately, never in a public issue (SECURITY.md).
+  - name: The launcher or the game
+    url: https://github.com/CyriacFR/Kalamar/issues
+    about: The Kalamar repository (engine and launcher) has its own issues.

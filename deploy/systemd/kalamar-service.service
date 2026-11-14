@@ -1,0 +1,44 @@
+[Unit]
+Description=Kalamar community service (HTTP API behind a reverse proxy)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Install: binary in /usr/local/bin, configuration in /etc/kalamar/kalamar.toml with
+#   database = "/var/lib/kalamar/kalamar.sqlite3" and secret_file = "/var/lib/kalamar/secret.key"
+ExecStart=/usr/local/bin/kalamar-service --config /etc/kalamar/kalamar.toml --log-format json serve
+# systemctl reload kalamar-service: the configuration is read again without a restart, like `admin reload`, but the
+# outcome (applied, or refused and why) only reaches the journal: prefer `kalamar-service -c ... admin reload`.
+ExecReload=/bin/kill -HUP $MAINPID
+# SIGTERM (systemctl stop) stops it cleanly: a relay inside it ([embedded_relay]) closes its members' sessions.
+DynamicUser=yes
+StateDirectory=kalamar
+WorkingDirectory=/var/lib/kalamar
+# The secret of a relay run as a program of its own comes from that relay's root-only file, read by systemd; a
+# server whose relay runs inside the service has no such file and must not have this line:
+# LoadCredential=relay.key:/etc/kalamar/relay.key
+# and in the configuration, in the relay's [[relays]] entry:
+#   secret_file = "/run/credentials/kalamar-service.service/relay.key"
+# (or put the line in a drop-in, kalamar-service.service.d/relay-key.conf, under [Service]).
+# The Discord client secret, if used, can come from a root-only file read by systemd:
+# LoadCredential=discord-secret:/etc/kalamar/discord-secret
+# and in the configuration: client_secret_file = "/run/credentials/kalamar-service.service/discord-secret"
+Environment=KALAMAR_LOG=info
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

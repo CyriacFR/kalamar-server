@@ -1,0 +1,178 @@
+# Kalamar community service: preset "tournament" (events).
+# An 8-player cup (single elimination, best of 3) and a best-of-5 challenge, a stage veto before every game, places
+# in the stands for everyone, badges for the winners. Rooms stay available for warm-ups. No queues, no ratings.
+# Every option is explained in deploy/kalamar.example.toml. Check with:  kalamar-service -c <this file> check-config
+# Change it while the service runs with:                                 kalamar-service -c <this file> admin reload
+
+[server]
+name = "{{NAME}}"
+description = { en = "Cups and best-of series.", fr = "Coupes et séries au meilleur des manches." }
+api_url = "https://{{HOST}}/api"
+bind = "{{BIND}}"                  # plain HTTP, behind your HTTPS reverse proxy (deploy/Caddyfile)
+production = true
+database = "{{DATA}}/kalamar.sqlite3"
+secret_file = "{{DATA}}/secret.key"          # back it up with the database
+trusted_proxies = [{{PROXIES}}]   # only these peers' X-Forwarded-For is believed
+privacy_url = "https://{{HOST}}/privacy"  # publish PRIVACY-TEMPLATE.md there, adapted
+languages = ["fr", "en"]
+operator = { name = "{{OPERATOR}}", contact = "{{CONTACT}}" }
+
+[features]
+rooms = true
+queues = false
+parties = false
+friends = true
+presence = true
+ratings = false
+leaderboards = false
+stats = true
+moderation = true
+activities = true
+series = true
+badges = true
+profiles = true
+population = true
+draft = true
+spectators = true
+
+# Guest accounts (a display name, nothing to remember) play rooms and the best-of challenge, never the cup
+# (ranked = false): a guest account costs one request, so anyone could enter twice or come back after a ban. The cup
+# needs a login players cannot throw away: add an [[auth.oauth]] provider (Discord, ...) from
+# deploy/kalamar.example.toml. (Logins and `ranked` change with a restart, not with a reload.)
+[auth.guest]
+enabled = true
+ranked = false
+
+# The relay: kalamar-relay, a program of its own (recommended for events: its latency does not move while the API
+# works, and it can sit on another machine). Players reach UDP 47313 directly, never through the HTTP proxy. It is
+# bound to this server by a secret, {{DATA}}/relay.key: `init` created it (readable by its owner only; without it, or with
+# --no-relay-secret: kalamar-relay --new-room-secret {{DATA}}/relay.key). Start the relay with it:
+#   kalamar-relay --room-secret-file {{DATA}}/relay.key
+[[relays]]
+host = "{{RELAY}}"
+port = 47313
+secret_file = "{{DATA}}/relay.key"           # the relay's secret: the service seals every room code with it
+# Another region, or more players: on another machine run
+#   kalamar-relay --new-room-secret relay-2.key      then      kalamar-relay --room-secret-file relay-2.key
+# copy relay-2.key here, add a [[relays]] with its host, an id and secret_file = "<that copy>", then `admin reload`.
+# One secret per relay: whoever holds a relay's secret can open rooms on that relay.
+#
+# A small event can run the relay inside this program instead (one program to start, see the preset "friends"):
+# [embedded_relay]
+# enabled = true
+# port = 47313
+# secret_file = "{{DATA}}/relay.key"         # created at the first start; the [[relays]] entry above keeps it
+
+[rooms]
+teams_choices = [[1, 1], [2, 2], [3, 3], [4, 4]]
+default_teams = [1, 1]
+modes = ["turf"]
+result_policy = "casual"
+drafts = ["veto"]
+
+[rooms.spectators]
+max = 2
+who = ["anyone", "invited", "friends"]
+
+[spectators]
+referees = []                            # account ids of your referees (kalamar-service admin users)
+opt_out = false                          # tournament matches are public
+
+[[result_policies]]                      # a referee's game breaks a disagreement between the players' reports
+id = "witnessed"
+name = { en = "A referee breaks ties", fr = "Un arbitre tranche" }
+summary = { en = "A result counts when more than half of the players back it; when the players' results differ, the result a referee's game recorded (from the stands) decides between them. A player who leaves a game in play loses it; a crash or a lost connection voids it.", fr = "Un résultat compte quand plus de la moitié des joueurs le soutiennent ; quand les résultats des joueurs divergent, celui qu'a enregistré le jeu d'un arbitre (en tribune) tranche. Un joueur qui quitte une manche en cours la perd ; un plantage ou une coupure l'annule." }
+quorum = "majority"
+silence = "consent_after_play"
+disagreement = "majority"
+rated_requires_both_teams = false
+accept_s = 20
+launch_s = 90
+result_s = 2400
+grace_s = 120
+witness = "tiebreak"
+witness_from = "referees"                # only your referees (below): any other spectator may be a player's second account
+leave = "forfeit"                        # 1.1.11: leaving a game in play loses it (a crash or a lost connection: void)
+
+[[activities]]
+id = "cup"
+kind = "tournament"
+title = { en = "The cup", fr = "La coupe" }
+subtitle = { en = "8 players, single elimination, best of 3", fr = "8 joueurs, élimination directe, au meilleur des 3" }
+description = { en = "Register; the cup starts when eight players are in. Each round is a best of 3. A void series is drawn by lot.", fr = "Inscrivez-vous ; la coupe démarre à huit. Chaque tour se joue au meilleur des 3." }
+icon = "trophy"
+color = "#D4AF37"
+order = 10
+size = 8                                 # 2 to 64 entrants
+best_of = 3
+mode = "turf"
+result_policy = "witnessed"
+reopen_after_s = 1800                    # a new edition opens half an hour after the final
+draft = "veto"
+spectators = { seats = 2, who = "anyone" }
+
+[[activities]]
+id = "bo5"
+kind = "duel_series"
+title = { en = "Best of 5 challenge", fr = "Défi au meilleur des 5" }
+subtitle = { en = "Find an opponent, play five games at most", fr = "Trouvez un adversaire, cinq manches au plus" }
+description = { en = "The first two players waiting play a best of 5; from the second game on, the loser picks the stage.", fr = "Les deux premiers joueurs en attente jouent au meilleur des 5 ; dès la deuxième manche, le perdant choisit le stage." }
+icon = "swords"
+order = 20
+best_of = 5
+mode = "turf"
+result_policy = "witnessed"
+draft = "loser-picks"
+spectators = { seats = 2, who = "anyone" }
+
+[[drafts]]
+id = "veto"
+label = { en = "Stage veto", fr = "Veto des stages" }
+summary = { en = "Each team bans one stage, then a stage is drawn among the rest.", fr = "Chaque équipe bannit un stage, puis un stage est tiré au sort parmi les autres." }
+turns = ["ban:first:1", "ban:second:1", "random"]
+first = "random"
+decider = "captain"
+turn_s = 20
+
+[[drafts]]
+id = "loser-picks"
+label = { en = "The loser picks", fr = "Le perdant choisit" }
+summary = { en = "Game 1 is a veto; then the previous game's winner bans one stage and its loser picks.", fr = "La première manche est un veto ; ensuite le vainqueur de la manche précédente bannit un stage et le perdant choisit." }
+first_game_turns = ["ban:first:1", "ban:second:1", "random"]
+turns = ["ban:winner:1", "pick:loser:1"]
+series = "per_game"
+exclude_played = true
+
+[[badges]]
+id = "first-match"
+name = { en = "First match", fr = "Premier match" }
+description = { en = "Played a match on this server.", fr = "A joué un match sur ce serveur." }
+icon = "flag"
+rule = "matches:1"
+
+[[badges]]
+id = "series-winner"
+name = { en = "Series winner", fr = "Vainqueur de série" }
+description = { en = "Won a best-of series.", fr = "A remporté une série." }
+icon = "swords"
+rule = "series_wins:1"
+
+[[badges]]
+id = "cup-champion"
+name = { en = "Cup champion", fr = "Champion de la coupe" }
+description = { en = "Won the cup.", fr = "A remporté la coupe." }
+icon = "crown"
+color = "#D4AF37"
+rule = "tournament:cup"
+
+[[titles]]
+id = "challenger"
+text = { en = "Challenger", fr = "Challenger" }
+
+[[titles]]
+id = "champion"
+text = { en = "Champion", fr = "Champion" }
+badge = "cup-champion"
+
+[rules]
+summary = { en = "Be kind. One account per person. Results are reported by your launcher and compared with the other players' reports.", fr = "Soyez bienveillants. Un compte par personne. Les résultats sont envoyés par votre lanceur et comparés à ceux des autres joueurs." }
