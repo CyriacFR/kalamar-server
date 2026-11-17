@@ -376,7 +376,7 @@ result_policy = "casual"
 idle_close_s = 7200
 invites = true
 invites_friends_only = true   # also for party invitations
-host = "owner"                # owner | random: who hosts the game session
+host = "owner"                # owner | random: who hosts the game session (random: among those who host well)
 # Loadouts a room owner may impose (form field `loadout`); weapon and gear ids are the engine's, from players' games.
 # Only players whose engine declares match_loadout can start such a room.
 loadouts = [

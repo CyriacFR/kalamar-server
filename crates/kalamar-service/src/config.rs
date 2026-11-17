@@ -1194,7 +1194,8 @@ pub struct RoomsSection {
     pub invites: bool,
     /// Invitations to rooms and parties need a friendship (when `friends` is on).
     pub invites_friends_only: bool,
-    /// `owner` (the room owner hosts the game session) or `random`.
+    /// `owner` (the room owner hosts the game session) or `random` (drawn among the players whose games host well,
+    /// `crate::host`).
     pub host: String,
     /// Loadouts offered in the room form (`loadout` field); empty: no such field.
     pub loadouts: Vec<LoadoutPreset>,

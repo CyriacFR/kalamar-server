@@ -1004,6 +1004,156 @@ async fn a_spectator_has_no_say_in_the_relay_of_a_match() {
     s.running.stop();
 }
 
+/// The host of a room with `rooms.host = "random"` is drawn among the better half of its players by hidden host score,
+/// those at the default or above (`host.rs`): the owner, below the default, never hosts.
+#[tokio::test]
+async fn the_host_is_drawn_among_the_reliable_better_half() {
+    let mut doc = config();
+    doc["rooms"]
+        .as_table_mut()
+        .unwrap()
+        .insert("host".into(), "random".into());
+    let s = start(doc).await;
+    let ana = s.player("ana", Launcher::Spectators).await;
+    let bo = s.player("bo", Launcher::Spectators).await;
+    let cy = s.player("cy", Launcher::Spectators).await;
+    let di = s.player("di", Launcher::Spectators).await;
+    {
+        let core = s.running.state.lock();
+        for (p, score) in [(&ana, 60), (&bo, 140), (&cy, 90), (&di, 70)] {
+            core.db
+                .execute(
+                    "UPDATE users SET host_score = ?2 WHERE id = ?1",
+                    rusqlite::params![p.id, score],
+                )
+                .unwrap();
+        }
+    }
+    // A 2v2: the better half is bo and cy, of them only bo is at the default or above: the same host every time,
+    // where a draw among the four would miss three times in four.
+    let (rid, code) = s.room(&ana, json!({"spectators": 0, "teams": [2, 2]})).await;
+    for p in [&bo, &cy, &di] {
+        s.post(p, "/v1/rooms/join", json!({"code": code})).await;
+        s.post(p, &format!("/v1/rooms/{rid}/ready"), json!({"ready": true}))
+            .await;
+    }
+    let (st, m) = s.post(&ana, &format!("/v1/rooms/{rid}/start"), json!({})).await;
+    assert_eq!(st, 201, "{m}");
+    let (va, vb) = (s.current(&ana).await, s.current(&bo).await);
+    assert_eq!(
+        va["game"]["host_name"], vb["you"]["member_name"],
+        "the reliable player hosts: {va}"
+    );
+    s.running.stop();
+}
+
+/// The host's score moves only after the matches it hosted: up when every game started quickly, down when the match
+/// is voided before it started and a guest's error names the host.
+#[tokio::test]
+async fn the_host_score_follows_the_matches_it_hosted() {
+    let s = start(config()).await;
+    let ana = s.player("ana", Launcher::Spectators).await;
+    let bo = s.player("bo", Launcher::Spectators).await;
+    let score = |p: &P| -> i64 {
+        s.running
+            .state
+            .lock()
+            .db
+            .query_row("SELECT host_score FROM users WHERE id = ?1", [&p.id], |r| r.get(0))
+            .unwrap()
+    };
+    assert_eq!((score(&ana), score(&bo)), (100, 100));
+    // A match every game starts at once (the manual clock does not move): +5 for its host only.
+    let mid = s.found("duel", &ana, &bo).await;
+    s.accept(&mid, &[&ana, &bo]).await;
+    let (va, vb) = (s.current(&ana).await, s.current(&bo).await);
+    let (an, ar) = me(&va);
+    let (bn, br) = me(&vb);
+    let (host, guest) = if ar == "host" { (&ana, &bo) } else { (&bo, &ana) };
+    s.play(&ana, &mid, result_file(&va, Some(&an), &ar, 0)).await;
+    s.play(&bo, &mid, result_file(&vb, Some(&bn), &br, 0)).await;
+    assert_eq!((score(host), score(guest)), (105, 100));
+    // A match the guest cannot join (its game finds no session): void before the start, -25 for its host.
+    let mid = s.found("duel", &ana, &bo).await;
+    s.accept(&mid, &[&ana, &bo]).await;
+    let (va, vb) = (s.current(&ana).await, s.current(&bo).await);
+    let hosts_now = if me(&va).1 == "host" { &ana } else { &bo };
+    for (p, v, error) in [(&ana, &va, "room-not-found"), (&bo, &vb, "room-not-found")] {
+        let error = if std::ptr::eq(p, hosts_now) {
+            "players-timeout"
+        } else {
+            error
+        };
+        s.post(p, &format!("/v1/matches/{mid}/launch"), json!({})).await;
+        let (st, r) = s
+            .post(
+                p,
+                &format!("/v1/matches/{mid}/result"),
+                json!({"version": 2, "match_id": v["game"]["match_id"], "error": error}),
+            )
+            .await;
+        assert_eq!(st, 200, "{r}");
+    }
+    let expected = if std::ptr::eq(hosts_now, host) {
+        (80, 100)
+    } else {
+        (105, 75)
+    };
+    assert_eq!((score(host), score(guest)), expected);
+    s.running.stop();
+}
+
+/// A host whose game crashes during the match, or whose player closes it, loses 25, on top of what the start gave it;
+/// the guest's score does not move.
+#[tokio::test]
+async fn a_host_that_crashes_or_quits_in_the_match_loses_score() {
+    for gone in ["launcher-crashed", "left-by-player"] {
+        let s = start(config()).await;
+        let ana = s.player("ana", Launcher::Spectators).await;
+        let bo = s.player("bo", Launcher::Spectators).await;
+        let score = |p: &P| -> i64 {
+            s.running
+                .state
+                .lock()
+                .db
+                .query_row("SELECT host_score FROM users WHERE id = ?1", [&p.id], |r| r.get(0))
+                .unwrap()
+        };
+        let mid = s.found("duel", &ana, &bo).await;
+        s.accept(&mid, &[&ana, &bo]).await;
+        let (va, vb) = (s.current(&ana).await, s.current(&bo).await);
+        let (host, guest, vh, vg) = if me(&va).1 == "host" {
+            (&ana, &bo, &va, &vb)
+        } else {
+            (&bo, &ana, &vb, &va)
+        };
+        for p in [host, guest] {
+            s.post(p, &format!("/v1/matches/{mid}/launch"), json!({})).await;
+            for st in ["booting", "in-room", "loading-stage", "in-match"] {
+                s.post(
+                    p,
+                    &format!("/v1/matches/{mid}/status"),
+                    json!({"version": 1, "state": st}),
+                )
+                .await;
+            }
+        }
+        assert_eq!(score(host), 105, "a quick start");
+        for (p, v, error) in [(host, vh, gone), (guest, vg, "connection-lost")] {
+            let (st, r) = s
+                .post(
+                    p,
+                    &format!("/v1/matches/{mid}/result"),
+                    json!({"version": 2, "match_id": v["game"]["match_id"], "error": error}),
+                )
+                .await;
+            assert_eq!(st, 200, "{r}");
+        }
+        assert_eq!((score(host), score(guest)), (80, 100), "{gone}");
+        s.running.stop();
+    }
+}
+
 /// 1.1.13 (relay.md 4.3): when every relay that could take a match is full, a room start is refused with
 /// `503 relay_capacity` and changes nothing; once a relay has room again the same start succeeds there.
 #[tokio::test]

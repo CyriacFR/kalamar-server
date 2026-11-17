@@ -634,7 +634,9 @@ pub fn tick(core: &mut Core) {
                 loadout: q.loadout.clone(),
                 spectators: crate::spectate::rule_of(&cfg, q.spectators.as_ref()),
             };
-            let host = random_index(seats.len());
+            // 1.1.15: a draw among the fastest declared machines (`host`)
+            let users: Vec<&str> = seats.iter().map(|s| s.user_id.as_str()).collect();
+            let host = crate::host::pick(core, &users);
             let extras = MatchExtras {
                 draft,
                 ..MatchExtras::default()

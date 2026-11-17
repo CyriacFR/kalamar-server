@@ -16,7 +16,13 @@ again). Unrated queues balance teams with a ladder's ratings (`balance_ladder`).
 anchors a search whose rating window widens with waiting time; teams shrink step by step to `min_teams` after
 `shrink_after_s`; parties stay on one team; the most even split is chosen. In a match, its players and spectators see
 each player's rating, tier and leaderboard position on the match's ladder, or on the `balance_ladder` of an unrated
-queue (protocol 1.1.14, [api.md](protocol/api.md#participant-ratings-1114)).
+queue (protocol 1.1.14, [api.md](protocol/api.md#participant-ratings-1114)). The host of a queue's match, and of a
+room's when `rooms.host = "random"`, is drawn from a hidden **host score** per player (100 at first, 0 to 200; never
+shown, in the account export): the better half of the match's players by score, of them those at 100 or above, one
+at random (`crates/kalamar-service/src/host.rs`). The score moves only after a match the player hosted: +5 when every
+game started the match quickly after the last player's launch, -5 when slowly, -25 when the host's game crashed or
+its player closed it or left (before or during the match), and -25 when the match was voided before it started and the
+host did not launch, reported a hosting error, or a guest's error named it.
 
 ## Activities and series
 

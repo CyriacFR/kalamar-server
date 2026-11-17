@@ -16,6 +16,7 @@ pub mod db;
 pub mod draft;
 pub mod error;
 pub mod events;
+pub mod host;
 pub mod matches;
 pub mod matchmaking;
 pub mod netutil;

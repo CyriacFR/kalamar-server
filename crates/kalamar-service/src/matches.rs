@@ -1218,6 +1218,12 @@ pub fn status(core: &mut Core, mid: &str, user: &str, body: Value) -> ApiResult<
     if !matches!(m.state, MState::Ready | MState::Running) {
         return Err(ApiError::conflict("match_state", "this match is not running"));
     }
+    let all_started = |m: &LiveMatch| {
+        m.seats
+            .iter()
+            .all(|s| s.status_state.as_deref().is_some_and(|st| STARTED_STATES.contains(&st)))
+    };
+    let started_before = all_started(m);
     let seat = &mut m.seats[i];
     let changed = seat.status_state.as_deref() != Some(state.as_str());
     seat.saw_in_match |= PLAYED_STATES.contains(&state.as_str());
@@ -1231,6 +1237,9 @@ pub fn status(core: &mut Core, mid: &str, user: &str, body: Value) -> ApiResult<
     m.updated_at = now;
     let snapshot = m.clone();
     save(core, &snapshot)?;
+    if !started_before && all_started(&snapshot) {
+        crate::host::started(core, &snapshot, now);
+    }
     if changed {
         notify(core, mid, "match.updated");
     }
@@ -1544,6 +1553,7 @@ fn finish(core: &mut Core, mid: &str, d: Decision) -> ApiResult<()> {
     m.state = if d.counted { MState::Completed } else { MState::Void };
     m.ended_at = Some(now);
     m.updated_at = now;
+    crate::host::finished(core, &m, d.counted);
     let record = d.record.as_ref().map(|r| {
         let mut v = r.public_json();
         if let Some(players) = v.get_mut("players").and_then(Value::as_array_mut) {

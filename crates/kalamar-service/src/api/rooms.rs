@@ -17,7 +17,7 @@ use crate::config::Config;
 use crate::error::{ApiError, ApiResult, JsonBody};
 use crate::matches::{MatchExtras, NewSeat, create_match};
 use crate::state::{AppState, Core, MState, MatchRules, Room, RoomMember};
-use crate::util::{new_code, new_id, random_index, rfc3339};
+use crate::util::{new_code, new_id, rfc3339};
 
 const CODE_LEN: usize = 6;
 
@@ -1060,7 +1060,9 @@ pub async fn start(
         }
     }
     let host = if core.cfg.rooms.host == "random" {
-        random_index(seats.len())
+        // 1.1.15: a draw among the fastest declared machines (`host`)
+        let users: Vec<&str> = seats.iter().map(|s| s.user_id.as_str()).collect();
+        crate::host::pick(&core, &users)
     } else {
         seats.iter().position(|s| s.user_id == r.owner).unwrap_or(0)
     };

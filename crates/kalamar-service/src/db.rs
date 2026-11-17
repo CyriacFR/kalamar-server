@@ -17,6 +17,7 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
     ("0006_spectators", include_str!("../migrations/0006_spectators.sql")),
     ("0007_control", include_str!("../migrations/0007_control.sql")),
     ("0008_security", include_str!("../migrations/0008_security.sql")),
+    ("0009_host_score", include_str!("../migrations/0009_host_score.sql")),
 ];
 
 /// Opens (creating it if needed) and migrates the database at `path`; `:memory:` for an in-memory one. Only the

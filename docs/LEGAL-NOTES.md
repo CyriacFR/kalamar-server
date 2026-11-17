@@ -26,7 +26,8 @@ of the players' personal data under the GDPR in the European Union).
 What the reference service stores is minimized by design (protocol `overview.md`, section 4; `PRIVACY-TEMPLATE.md`):
 a display name, a keyed hash of the login identity (never a provider's user id, e-mail or password in clear; with
 password accounts, an Argon2id hash of the password, see section 3), hashes of tokens, social data the player
-creates, matches and their reports, ratings, statistics and moderation records.
+creates, matches and their reports, ratings, statistics, a hidden score of how each player's game hosted its matches
+(to choose a match's host) and moderation records.
 IP addresses are not stored in the database; rate limiting works in memory; the example proxy configurations turn
 access logs off. Players have export and erasure rights in the protocol; the reference service implements both (and
 the operator's command line can perform them on request).
