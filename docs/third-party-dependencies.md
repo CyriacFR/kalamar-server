@@ -104,7 +104,7 @@ Packages: 200 runtime.
 | `lazy_static` | 1.5.1 | MIT OR Apache-2.0 | runtime |
 | `lettre` | 0.11.23 | MIT | runtime |
 | `libc` | 0.2.191 | MIT OR Apache-2.0 | runtime |
-| `libsqlite3-sys` | 0.39.1 | MIT | runtime |
+| `libsqlite3-sys` | 0.40.0 | MIT | runtime |
 | `litemap` | 0.7.4 | Unicode-3.0 | runtime |
 | `log` | 0.4.35 | MIT OR Apache-2.0 | runtime |
 | `matchers` | 0.2.0 | MIT | runtime |
@@ -135,7 +135,7 @@ Packages: 200 runtime.
 | `regex-syntax` | 0.8.11 | MIT OR Apache-2.0 | runtime |
 | `reqwest` | 0.13.5 | MIT OR Apache-2.0 | runtime |
 | `ring` | 0.17.14 | Apache-2.0 AND ISC | runtime |
-| `rusqlite` | 0.41.1 | MIT | runtime |
+| `rusqlite` | 0.42.0 | MIT | runtime |
 | `rustls` | 0.23.46 | Apache-2.0 OR ISC OR MIT | runtime |
 | `rustls-native-certs` | 0.8.5 | Apache-2.0 OR ISC OR MIT | runtime |
 | `rustls-pki-types` | 1.16.0 | MIT OR Apache-2.0 | runtime |
